@@ -12,7 +12,10 @@ const {
   validarOWNER_ROLE_o_Admin,
   validarNoUsuario,
 } = require('../middlewares/validar-jwt');
-const { createTransaction } = require('../controllers/transactions');
+const {
+  createTransaction,
+  createWithdrawal,
+} = require('../controllers/transactions');
 
 const router = Router();
 
@@ -21,6 +24,16 @@ const router = Router();
 // router.get('/:id', validarJWT, validarOWNER_ROLE_o_MismoUsuario, getUser);
 
 // router.get('/', validarJWT, validarNoUsuario, getUsuarios);
+
+router.post(
+  '/withdrawal/',
+  [
+    check('accountId', 'Num. de cuenta obligatoria').not().isEmpty(),
+    check('ammount', 'El monto es obligatorio').not().isEmpty(),
+    validarCampos,
+  ],
+  createWithdrawal
+);
 
 router.post(
   '/',

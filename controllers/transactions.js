@@ -1,179 +1,51 @@
 const { response } = require('express');
-const bcrypt = require('bcryptjs');
 
 const Account = require('../models/bankAccount');
 const Transaction = require('../models/transactions');
-const { generarJWT } = require('../helpers/jwt');
 
-const getUsuarios = async (req, res) => {
-  const { uid, role } = req;
+const createWithdrawal = async (req, res) => {
+  console.log(req.body);
+  const { accountId, ammount } = req.body;
+  // ? account Id es a donde se ira el dinero
 
   try {
-    let usersDB;
-    if (role === 'admin') {
-      // Si es administrador, obtiene todos los usuarios de todos los gimnasios
-      usersDB = await User.find();
-    } else {
-      // Si no es administrador, obtiene solo los usuarios de su gimnasio especificado
-      usersDB = await User.find({ gymId: gymIdToCheck });
+    const existingBankAccount = await Account.findOne({ _id: accountId });
+
+    if (!existingBankAccount) {
+      return res.status(400).json({
+        ok: false,
+        msg: 'La cuenta no existe, porfavor intenta con otro',
+      });
     }
 
-    // Utiliza la función $lookup para buscar suscripciones
-    const usersWithSuscriptions = await User.aggregate([
-      {
-        $match: { _id: { $in: usersDB.map((user) => user._id) } },
-      },
-      {
-        $lookup: {
-          as: 'suscriptions',
-          from: 'suscriptions',
-          foreignField: 'userId',
-          localField: '_id',
-        },
-      },
-      {
-        $unwind: {
-          path: '$suscriptions',
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      {
-        $sort: {
-          'suscriptions.endDate': -1, // Ordena las suscripciones por fecha de finalización descendente
-        },
-      },
-      {
-        $group: {
-          _id: '$_id',
-          user: { $first: '$$ROOT' },
-          activeSubscription: { $first: '$suscriptions' }, // Obtiene la suscripción más reciente
-        },
-      },
-      {
-        $replaceRoot: { newRoot: '$user' },
-      },
-    ]);
+    // si la transaccion es menor a su saldo
+    if (accountId.balance < ammount) {
+      console.log({ ok: false, msg: 'Saldo insuficiente.' });
+      return res.status(400).json({
+        ok: false,
+        msg: 'Saldo insuficiente.',
+      });
+    }
 
-    // Ahora usersWithSuscriptions contiene la información de usuarios con suscripciones
-
-    return res.json({ ok: true, users: usersWithSuscriptions });
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({
-      ok: false,
-      msg: 'Error inesperado',
+    const sourceTransaction = new Transaction({
+      accountId: accountId,
+      transactionType: 'withdrawal',
+      ammount: ammount,
     });
-  }
-};
 
-// ! Query que obtiene todos los usuarios con su suscription mas actual
-// ! si no es admin obtiene solo los de su gym
-// const getUsuarios = async (req, res) => {
-//   const { uid, gymId, gymIdToCheck, role } = req;
-//   console.log(uid, gymId, gymIdToCheck, role);
-//   // console.log(req.uid);
+    // Guardar transaccion
+    await sourceTransaction.save();
 
-//   try {
-//     let usersDB;
-//     if (role === 'admin') {
-//       // Si es administrador, obtiene todos los usuarios de todos los gimnasios
-//       usersDB = await User.find();
-//     } else {
-//       // Si no es administrador, obtiene solo los usuarios de su gimnasio
-//       usersDB = await User.find({ gymId });
-//     }
+    // Actualizar el saldo de la cuenta bancaria según el tipo de transacción
+    existingBankAccount.balance -= ammount;
 
-//     // Utiliza la función $lookup para buscar suscripciones activas
-//     const usersWithSuscriptions = await User.aggregate([
-//       {
-//         $match: { _id: { $in: usersDB.map((user) => user._id) } },
-//       },
-//       {
-//         $lookup: {
-//           as: 'suscriptions',
-//           from: 'suscriptions',
-//           foreignField: 'userId',
-//           localField: '_id',
-//         },
-//       },
-//       {
-//         $unwind: {
-//           path: '$suscriptions',
-//           preserveNullAndEmptyArrays: true,
-//         },
-//       },
-//       {
-//         $match: {
-//           'suscriptions.status': true, // Filtra las suscripciones activas
-//         },
-//       },
-//       {
-//         $sort: {
-//           'suscriptions.endDate': -1, // Ordena las suscripciones por fecha de finalización descendente
-//         },
-//       },
-//       {
-//         $group: {
-//           _id: '$_id',
-//           user: { $first: '$$ROOT' },
-//         },
-//       },
-//       {
-//         $replaceRoot: { newRoot: '$user' },
-//       },
-//     ]);
+    await existingBankAccount.save();
 
-//     // Ahora usersWithSuscriptions contiene la información de usuarios con suscripciones activas
-
-//     return res.json({ ok: true, users: usersWithSuscriptions });
-//   } catch (error) {
-//     console.log(error);
-//     res.status(500).json({
-//       ok: false,
-//       msg: 'Error inesperado',
-//     });
-//   }
-// };
-
-const getUser = async (req, res) => {
-  const uid = req.params.id;
-  const user = await User.findById(uid);
-
-  res.json({
-    ok: true,
-    user,
-  });
-};
-
-const searchUser = async (req, res) => {
-  const { uid, gymId, gymIdToCheck, role } = req;
-
-  try {
-    const { term } = req.query;
-    const regex = new RegExp(term, 'i');
-
-    if (role === 'admin') {
-      // Si es administrador, obtiene todos los usuarios de todos los gimnasios
-      const usersDB = await User.find({
-        email: regex,
-      }).select('_id name lastName email');
-
-      return res.json({
-        ok: true,
-        users: usersDB,
-      });
-    } else {
-      // Si no es administrador, obtiene solo los usuarios de su gimnasio especificado
-      const usersDB = await User.find({
-        email: regex,
-        gymId: gymIdToCheck,
-      }).select('_id name lastName email');
-
-      return res.json({
-        ok: true,
-        users: usersDB,
-      });
-    }
+    console.log({ ok: true, withdrawal: ammount });
+    res.json({
+      ok: true,
+      withdrawal: ammount,
+    });
   } catch (error) {
     console.log(error);
     res.status(500).json({
@@ -195,6 +67,10 @@ const createTransaction = async (req, res = response) => {
     });
 
     if (!existingTargetAccountId) {
+      console.log({
+        ok: false,
+        msg: 'La cuenta no existe, porfavor intenta de nuevo!',
+      });
       return res.status(400).json({
         ok: false,
         msg: 'La cuenta no existe, porfavor intenta de nuevo!',
@@ -202,6 +78,10 @@ const createTransaction = async (req, res = response) => {
     }
 
     if (!existingBankAccount) {
+      console.log({
+        ok: false,
+        msg: 'La cuenta a depositar no existe, porfavor intenta con otro',
+      });
       return res.status(400).json({
         ok: false,
         msg: 'La cuenta a depositar no existe, porfavor intenta con otro',
@@ -210,6 +90,7 @@ const createTransaction = async (req, res = response) => {
 
     // si la transaccion es menor a su saldo
     if (targetAccountId.balance < ammount) {
+      console.log({ ok: false, msg: 'Saldo insuficiente.' });
       return res.status(400).json({
         ok: false,
         msg: 'Saldo insuficiente.',
@@ -253,6 +134,7 @@ const createTransaction = async (req, res = response) => {
     await existingBankAccount.save();
     await existingTargetAccountId.save();
 
+    console.log({ ok: true, sourceTransaction, targetTransaction });
     res.json({
       ok: true,
       sourceTransaction,
@@ -267,80 +149,7 @@ const createTransaction = async (req, res = response) => {
   }
 };
 
-const actualizarUsuario = async (req, res = response) => {
-  // TODO: Validar token y comprobar si es el usuario correcto
-
-  const uid = req.params.id;
-
-  try {
-    const userDB = await User.findById(uid);
-
-    if (!userDB) {
-      return res.status(404).json({
-        ok: false,
-        msg: 'No existe un usuario por ese id',
-      });
-    }
-
-    // Actualizaciones
-    const { password, google, email, ...campos } = req.body;
-
-    if (userDB.email !== email) {
-      const existeEmail = await User.findOne({ email });
-      if (existeEmail) {
-        return res.status(400).json({
-          ok: false,
-          msg: 'Ya existe un usuario con ese email',
-        });
-      }
-    }
-
-    campos.email = email;
-    const userUpdated = await User.findByIdAndUpdate(uid, campos, {
-      new: true,
-    });
-
-    res.json({
-      ok: true,
-      user: userUpdated,
-    });
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({
-      ok: false,
-      msg: 'Error inesperado',
-    });
-  }
-};
-
-const borrarUsuario = async (req, res = response) => {
-  const uid = req.params.id;
-
-  try {
-    const userDB = await User.findById(uid);
-
-    if (!userDB) {
-      return res.status(404).json({
-        ok: false,
-        msg: 'No existe un usuario por ese id',
-      });
-    }
-
-    await User.findByIdAndDelete(uid);
-
-    res.json({
-      ok: true,
-      msg: 'User Deleted',
-    });
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({
-      ok: false,
-      msg: 'Hable con el administrador',
-    });
-  }
-};
-
 module.exports = {
   createTransaction,
+  createWithdrawal,
 };

@@ -23,75 +23,6 @@ const getUsuarios = async (req, res) => {
   }
 };
 
-// ! Query que obtiene todos los usuarios con su suscription mas actual
-// ! si no es admin obtiene solo los de su gym
-// const getUsuarios = async (req, res) => {
-//   const { uid, gymId, gymIdToCheck, role } = req;
-//   console.log(uid, gymId, gymIdToCheck, role);
-//   // console.log(req.uid);
-
-//   try {
-//     let usersDB;
-//     if (role === 'admin') {
-//       // Si es administrador, obtiene todos los usuarios de todos los gimnasios
-//       usersDB = await User.find();
-//     } else {
-//       // Si no es administrador, obtiene solo los usuarios de su gimnasio
-//       usersDB = await User.find({ gymId });
-//     }
-
-//     // Utiliza la función $lookup para buscar suscripciones activas
-//     const usersWithSuscriptions = await User.aggregate([
-//       {
-//         $match: { _id: { $in: usersDB.map((user) => user._id) } },
-//       },
-//       {
-//         $lookup: {
-//           as: 'suscriptions',
-//           from: 'suscriptions',
-//           foreignField: 'userId',
-//           localField: '_id',
-//         },
-//       },
-//       {
-//         $unwind: {
-//           path: '$suscriptions',
-//           preserveNullAndEmptyArrays: true,
-//         },
-//       },
-//       {
-//         $match: {
-//           'suscriptions.status': true, // Filtra las suscripciones activas
-//         },
-//       },
-//       {
-//         $sort: {
-//           'suscriptions.endDate': -1, // Ordena las suscripciones por fecha de finalización descendente
-//         },
-//       },
-//       {
-//         $group: {
-//           _id: '$_id',
-//           user: { $first: '$$ROOT' },
-//         },
-//       },
-//       {
-//         $replaceRoot: { newRoot: '$user' },
-//       },
-//     ]);
-
-//     // Ahora usersWithSuscriptions contiene la información de usuarios con suscripciones activas
-
-//     return res.json({ ok: true, users: usersWithSuscriptions });
-//   } catch (error) {
-//     console.log(error);
-//     res.status(500).json({
-//       ok: false,
-//       msg: 'Error inesperado',
-//     });
-//   }
-// };
-
 const getUser = async (req, res) => {
   const uid = req.params.id;
   const user = await User.findById(uid);
@@ -103,7 +34,7 @@ const getUser = async (req, res) => {
 };
 
 const searchUser = async (req, res) => {
-  const { uid, gymId, gymIdToCheck, role } = req;
+  const { uid, role } = req;
 
   try {
     const { term } = req.query;
@@ -123,7 +54,6 @@ const searchUser = async (req, res) => {
       // Si no es administrador, obtiene solo los usuarios de su gimnasio especificado
       const usersDB = await User.find({
         email: regex,
-        gymId: gymIdToCheck,
       }).select('_id name lastName email');
 
       return res.json({

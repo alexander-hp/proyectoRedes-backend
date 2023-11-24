@@ -25,7 +25,7 @@ const login = async (req, res = response) => {
       });
     }
 
-    // Generar el TOKEN - JWT, Pasamos el gym a donde quiere hacer la peticion
+    // Generar el TOKEN - JWT
     const token = await generarJWT(userDB);
 
     res.json({
